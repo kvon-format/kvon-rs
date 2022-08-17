@@ -230,15 +230,7 @@ macro_rules! value {
 }
 
 /// Helper macro for creating instances of `value::Value::Object`.
-///
-/// ```
-/// # #[macro_use] extern crate json;
-/// # fn main() {
-/// let data = object!{
-///     foo: 42,
-///     bar: false,
-/// };
-/// ```
+/// See the examples for usage.
 #[macro_export]
 macro_rules! object {
     // Empty object.
