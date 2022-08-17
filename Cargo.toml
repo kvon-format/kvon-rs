@@ -1,0 +1,18 @@
+[package]
+name = "kvon-rs"
+version = "0.1.0"
+edition = "2021"
+
+authors = ["Roy Varon Weinryb <varonroy@gmail.com>"]
+license = "MIT"
+license-file = "LICENSE"
+readme = "README.md"
+description = "Parsing the KVON format"
+categories = ["parsing"]
+keywords = ["kvon"]
+homepage = "https://kvon.org/"
+repository = "https://github.com/kvon-format/kvon-rs"
+
+[dependencies]
+lazy_static = "1.4.0"
+regex = "1.6.0"
