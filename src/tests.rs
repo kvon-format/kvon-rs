@@ -26,21 +26,21 @@ arrays:
 
 static MULTI_LINE_ARRAYS_A: &'static str = "
 array:--
-	1 2
-	2 3
-	[true false] [false true]
+	- 1 2
+	- 2 3
+	- [true false] [false true]
 ";
 
 static MULTI_LINE_ARRAYS_B: &'static str = "
 arr:--
-	1 2
-	2: 3
+	- 1 2
+	- 2: 3
 	--
-		'a' 'b'
-		'b': 'c'
+		- 'a' 'b'
+		- 'b': 'c'
 		--
-			true
-			false
+			- true
+			- false
 ";
 
 static MULTI_LINE_STRINGS: &'static str = "
@@ -64,20 +64,20 @@ d:
 
 static ARRAY_OF_OBJECTS: &'static str = "
 objects:--
-	'object 1':
+	- 'object 1':
 		'key 1-1': 'value 1-1'
 		'key 1-2': 'value 1-2'
 		'nested object':
 			'key 1-3': 'value 1-3'
 	
-	'object 2':
+	- 'object 2':
 		'key 2-1': 'value 2-1'
 		'key 2-2': 'value 2-2'
 		'nested object':
 			'key 2-3': 'value 2-3'
 
-	a: 'a'
-	b: 'b'
+	- a: 'a'
+	- b: 'b'
 ";
 
 #[test]
@@ -319,7 +319,7 @@ b:
 c: null
 d
 arr:--
-	f:
+	- f:
 ";
 
 #[test]

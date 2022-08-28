@@ -460,6 +460,12 @@ impl Parser {
 			return Ok(());
 		}
 
+		// array entries must start with `-`
+		if !line_parser.have("-") {
+			return Err(line_parser.generate_error(ParserErrorKind::expected("-")));
+		}
+		line_parser.consume_whitespaces();
+
 		// object
 		let key = line_parser.parse_key_with_colon()?;
 		if key.len() > 0 {

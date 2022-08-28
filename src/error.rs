@@ -4,12 +4,19 @@ use crate::indention::Indention;
 pub enum ParserErrorKind {
 	UnexpectedCharacter,
 	UnclosedString,
+	Expected(String),
 	// indention
 	InconsistentIndention(Indention, Indention),
 	InvalidIndention,
 	MultipleTabIndent,
 	MixedTabsAndSpaces,
 	SpacesNotMultipleOfIndent,
+}
+
+impl ParserErrorKind {
+	pub fn expected(s: impl ToString) -> Self {
+		Self::Expected(s.to_string())
+	}
 }
 
 /// Errors that can happen during parsing.
@@ -28,6 +35,7 @@ impl std::fmt::Display for ParserError {
 		match &self.kind {
 			ParserErrorKind::UnexpectedCharacter => write!(f, "unexpected character"),
 			ParserErrorKind::UnclosedString => write!(f, "string not closed"),
+			ParserErrorKind::Expected(s) => write!(f, "expected '{s}'"),
 			// indention
 			ParserErrorKind::InconsistentIndention(expected, found) => write!(
 				f,
