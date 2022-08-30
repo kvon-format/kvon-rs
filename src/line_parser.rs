@@ -53,9 +53,7 @@ impl<'a> LineParser<'a> {
 
 	/// Restore the last recorded state of the line parser.
 	fn restore(&mut self) {
-		let (i, left) = self.recorded.pop().unwrap();
-		self.i = i;
-		self.left = left;
+		(self.i, self.left) = self.recorded.pop().unwrap();
 	}
 
 	/// Remove the last recorded state without changing the current one.
@@ -134,7 +132,7 @@ impl<'a> LineParser<'a> {
 		(tabs_count, spaces_count)
 	}
 
-	// Advances past all the leading whitespaces.
+	/// Advances past all the leading whitespaces.
 	pub fn consume_whitespaces(&mut self) {
 		let start_len = self.left.len();
 		self.left = self.left.trim_start();

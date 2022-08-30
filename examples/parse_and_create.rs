@@ -4,6 +4,17 @@ static SOURCE: &'static str = "
 a:
 	b: 0
 c: [1 2 [3 4]]
+d:--
+	- 1 2
+	- [3 4]
+	--
+		-
+			a:
+				b: 0
+			c:
+				d: 1
+		- e: 2
+		- f: 3
 ";
 
 fn main() {
@@ -11,7 +22,27 @@ fn main() {
 		a: {
 			b: 0,
 		},
-		c: [1, 2, [3, 4]]
+		c: [1, 2, [3, 4]],
+		d: [
+			1, 2,
+			[3, 4],
+			[
+				{
+					a: {
+						b: 0
+					},
+					c: {
+						d: 1
+					},
+				},
+				{
+					e: 2,
+				},
+				{
+					f: 3,
+				},
+			]
+		],
 	};
 
 	let object2 = parse_string(SOURCE).unwrap();

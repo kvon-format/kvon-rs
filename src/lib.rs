@@ -81,166 +81,113 @@ use crate::value::PrimitiveValue;
 
 pub type ParserResult<T> = Result<T, ParserError>;
 
-struct ObjectContext {
-	indent: usize,
-	key: String,
+struct ObjectContent {
+	pending_key: String,
 	values: HashMap<String, Value>,
 }
 
-impl ObjectContext {
-	fn consume_context(&mut self, context: Context) {
-		match context {
-			Context::Object(ctx_obj) => {
-				self.values
-					.insert(ctx_obj.key, Value::Object(ctx_obj.values));
-			}
-			Context::Array(ctx_arr) => {
-				if ctx_arr.key.len() == 0 {
-					panic!("error - this should never happen");
-				}
-				self.values
-					.insert(ctx_arr.key, Value::Array(ctx_arr.values));
-			}
-			Context::MultiLineString(ctx_mls) => {
-				if ctx_mls.key.is_empty() {
-					panic!("error - this should never happen");
-				}
-
-				self.values.insert(
-					ctx_mls.key,
-					Value::Primitive(ctx_mls.lines.join("\n").into()),
-				);
-			}
-		}
-	}
-}
-
-struct ArrayContext {
-	indent: usize,
-	key: String,
+struct ArrayContent {
 	values: Vec<Value>,
 }
 
-impl ArrayContext {
-	fn consume_context(&mut self, context: Context) {
-		match context {
-			Context::Object(ctx_obj) => {
-				let mut m = HashMap::new();
-				m.insert(ctx_obj.key, Value::Object(ctx_obj.values));
-
-				self.values.push(Value::Object(m));
-			}
-			Context::Array(ctx_arr) => {
-				if ctx_arr.key.len() != 0 {
-					todo!("error - but this should never happen");
-				}
-				self.values.push(Value::Array(ctx_arr.values));
-			}
-			Context::MultiLineString(ctx_mls) => {
-				if !ctx_mls.key.is_empty() {
-					todo!("this shouldn't happen");
-				}
-
-				self.values
-					.push(Value::Primitive(ctx_mls.lines.join("\n").into()));
-			}
-		}
-	}
+struct MultiLineStringContent {
+	lines: Vec<String>,
 }
 
-struct MultiLineStringContext {
-	indent: usize,
-	key: String,
-	lines: Vec<String>,
+enum ContextContent {
+	Object(ObjectContent),
+	Array(ArrayContent),
+	MultiLineString(MultiLineStringContent),
 }
 
 /// Parsing is a recursive process. `Context` is a struct that holds the data
 /// associated with a recursive step in that process.
-enum Context {
-	Object(ObjectContext),
-	Array(ArrayContext),
-	MultiLineString(MultiLineStringContext),
+struct Context {
+	indent: usize,
+	content: ContextContent,
 }
 
 impl Context {
-	fn empty_object_context(indent: usize, key: String) -> Context {
-		Context::Object(ObjectContext {
+	fn object_context(indent: usize, pending_key: String) -> Context {
+		Self {
 			indent,
-			key,
-			values: HashMap::new(),
-		})
-	}
-
-	fn empty_multi_line_array_root_context(indent: usize, key: String) -> Context {
-		Context::Array(ArrayContext {
-			indent,
-			key,
-			values: Vec::new(),
-		})
-	}
-
-	fn empty_multi_line_array_context(indent: usize) -> Context {
-		Context::Array(ArrayContext {
-			indent,
-			key: String::new(),
-			values: Vec::new(),
-		})
-	}
-
-	fn empty_multi_line_string(indent: usize, key: String) -> Context {
-		Self::MultiLineString(MultiLineStringContext {
-			indent,
-			key,
-			lines: Vec::new(),
-		})
-	}
-
-	fn is_object_context(&self) -> bool {
-		matches!(self, Self::Object(..))
-	}
-
-	fn is_array_context(&self) -> bool {
-		matches!(self, Self::Array(..))
-	}
-
-	fn get_indent(&self) -> usize {
-		match self {
-			Self::Object(ctx_obj) => ctx_obj.indent,
-			Self::Array(ctx_arr) => ctx_arr.indent,
-			Self::MultiLineString(ctx_mls) => ctx_mls.indent,
+			content: ContextContent::Object(ObjectContent {
+				pending_key,
+				values: HashMap::new(),
+			}),
 		}
 	}
 
+	fn array_context(indent: usize) -> Context {
+		Self {
+			indent,
+			content: ContextContent::Array(ArrayContent { values: vec![] }),
+		}
+	}
+
+	fn multi_line_string_context(indent: usize) -> Context {
+		Self {
+			indent,
+			content: ContextContent::MultiLineString(MultiLineStringContent { lines: vec![] }),
+		}
+	}
+
+	fn is_object_context(&self) -> bool {
+		matches!(self.content, ContextContent::Object(_))
+	}
+
+	fn is_array_context(&self) -> bool {
+		matches!(self.content, ContextContent::Array(_))
+	}
+
+	fn get_indent(&self) -> usize {
+		self.indent
+	}
+
 	fn get_objects(self) -> Result<HashMap<String, Value>, ()> {
-		match self {
-			Self::Object(ctx_obj) => Ok(ctx_obj.values),
+		match self.content {
+			ContextContent::Object(obj) => Ok(obj.values),
 			_ => Err(()),
 		}
 	}
 
-	fn push_kv(&mut self, key: String, value: Value) {
-		match self {
-			Context::Object(v) => {
-				v.values.insert(key, value);
-			}
-			_ => todo!("error"),
+	fn set_pending_key(&mut self, pending_key: String) {
+		match &mut self.content {
+			ContextContent::Object(obj) => obj.pending_key = pending_key,
+			_ => panic!(),
 		}
 	}
 
 	fn push_v(&mut self, value: Value) {
-		match self {
-			Context::Array(v) => {
-				v.values.push(value);
+		match &mut self.content {
+			ContextContent::Object(obj) => {
+				let key = std::mem::replace(&mut obj.pending_key, String::new());
+				obj.values.insert(key, value);
 			}
-			_ => todo!("error"),
+			ContextContent::Array(arr) => {
+				arr.values.push(value);
+			}
+			_ => panic!(),
 		}
 	}
 
-	fn consume_context(&mut self, context: Context) {
-		match self {
-			Self::Object(ctx_obj) => ctx_obj.consume_context(context),
-			Self::Array(arr_obj) => arr_obj.consume_context(context),
-			_ => todo!("error"),
+	fn push_kv(&mut self, key: String, value: Value) {
+		match &mut self.content {
+			ContextContent::Object(obj) => {
+				obj.pending_key = String::new();
+				obj.values.insert(key, value);
+			}
+			_ => panic!(),
+		}
+	}
+
+	fn to_value(self) -> Value {
+		match self.content {
+			ContextContent::Object(obj) => Value::Object(obj.values),
+			ContextContent::Array(arr) => Value::Array(arr.values),
+			ContextContent::MultiLineString(mls) => {
+				Value::Primitive(PrimitiveValue::String(mls.lines.join("\n")))
+			}
 		}
 	}
 }
@@ -255,7 +202,7 @@ pub struct Parser {
 
 impl Parser {
 	pub fn new() -> Self {
-		let root_context = Context::empty_object_context(0, String::new());
+		let root_context = Context::object_context(0, String::new());
 		Self {
 			line_number: 0,
 			indention: None,
@@ -347,7 +294,7 @@ impl Parser {
 		self.context_stack
 			.last_mut()
 			.unwrap()
-			.consume_context(context);
+			.push_v(context.to_value());
 	}
 
 	// Collapses context from the top of the stack until the indent of the top
@@ -387,11 +334,13 @@ impl Parser {
 			if !line_parser.see_end_or_comment() {
 				return Err(line_parser.generate_error(ParserErrorKind::UnexpectedCharacter));
 			}
-			self.context_stack
-				.push(Context::empty_multi_line_array_root_context(
-					indent + 1,
-					key,
-				));
+
+			// set the key to the current context
+			let last = self.context_stack.last_mut().unwrap();
+			last.set_pending_key(key);
+
+			// push the array context
+			self.context_stack.push(Context::array_context(indent + 1));
 			return Ok(());
 		}
 
@@ -399,26 +348,26 @@ impl Parser {
 		if line_parser.have(":") {
 			line_parser.consume_whitespaces();
 
+			let last = self.context_stack.last_mut().unwrap();
+			last.set_pending_key(key);
+
+			// object - push a new context
+			if line_parser.see_end_or_comment() {
+				self.context_stack
+					.push(Context::object_context(indent + 1, String::new()));
+				return Ok(());
+			}
+
 			if let Some(value) = line_parser.parse_inline_array()? {
 				// inlined array
-				self.context_stack.last_mut().unwrap().push_kv(key, value);
-				if !line_parser.see_end_or_comment() {
-					return Err(line_parser.generate_error(ParserErrorKind::UnexpectedCharacter));
-				}
-			} else if line_parser.see_end_or_comment() {
-				// object - push a new context
-				self.context_stack
-					.push(Context::empty_object_context(indent + 1, key));
+				last.push_v(value);
 			} else if let Some(primitive) = line_parser.parse_primitive()? {
 				// value
-				self.context_stack
-					.last_mut()
-					.unwrap()
-					.push_kv(key, Value::Primitive(primitive));
+				last.push_v(Value::Primitive(primitive));
 			} else if line_parser.have("|") {
 				// multi-line string
 				self.context_stack
-					.push(Context::empty_multi_line_string(indent + 1, key));
+					.push(Context::multi_line_string_context(indent + 1));
 			}
 
 			// expected to reach end of line
@@ -455,8 +404,7 @@ impl Parser {
 			if !line_parser.see_end_or_comment() {
 				return Err(line_parser.generate_error(ParserErrorKind::UnexpectedCharacter));
 			}
-			self.context_stack
-				.push(Context::empty_multi_line_array_context(indent + 1));
+			self.context_stack.push(Context::array_context(indent + 1));
 			return Ok(());
 		}
 
@@ -466,46 +414,55 @@ impl Parser {
 		}
 		line_parser.consume_whitespaces();
 
-		// object
+		// object with more than one key
+		if line_parser.see_end_or_comment() {
+			self.context_stack
+				.push(Context::object_context(indent + 1, String::new()));
+			return Ok(());
+		}
+
+		// object with one key
 		let key = line_parser.parse_key_with_colon()?;
 		if key.len() > 0 {
 			line_parser.consume_whitespaces();
 
-			if let Some(value) = line_parser.parse_inline_array()? {
-				// key value pair - array
-				self.context_stack
-					.last_mut()
-					.unwrap()
-					.push_v(Value::key_value_pair(key, value));
-			} else if let Some(value) = line_parser.parse_primitive()? {
-				// key value pair - primitive
-				self.context_stack
-					.last_mut()
-					.unwrap()
-					.push_v(Value::key_value_pair(key, value));
+			let last = self.context_stack.last_mut().unwrap();
 
-				if !line_parser.see_end_or_comment() {
-					return Err(line_parser.generate_error(ParserErrorKind::UnexpectedCharacter));
-				}
+			// object context with single root
+			if line_parser.see_end_or_comment() {
+				self.context_stack
+					.push(Context::object_context(indent + 1, key));
+				self.context_stack
+					.push(Context::object_context(indent + 1, String::new()));
+				return Ok(());
+			}
+
+			if let Some(value) = line_parser.parse_inline_array()? {
+				// inlined array
+				last.push_v(Value::key_value_pair(key, value));
+			} else if let Some(primitive) = line_parser.parse_primitive()? {
+				// primitive
+				last.push_v(Value::key_value_pair(key, primitive));
+			} else if line_parser.have("|") {
+				// object context with single root and multi line string value
+				self.context_stack
+					.push(Context::object_context(indent + 1, key));
+				self.context_stack
+					.push(Context::multi_line_string_context(indent + 1));
+			}
+
+			// expected to reach end of line
+			if line_parser.see_end_or_comment() {
 				return Ok(());
 			} else {
-				// object
-				if !line_parser.see_end_or_comment() {
-					return Err(line_parser.generate_error(ParserErrorKind::UnexpectedCharacter));
-				}
-
-				self.context_stack
-					.push(Context::empty_object_context(indent + 1, key));
-
-				// there can only be one object per line
-				return Ok(());
+				return Err(line_parser.generate_error(ParserErrorKind::UnexpectedCharacter));
 			}
 		}
 
 		// multi-line string
 		if line_parser.have("|") {
 			self.context_stack
-				.push(Context::empty_multi_line_string(indent + 1, String::new()));
+				.push(Context::multi_line_string_context(indent + 1));
 			return Ok(());
 		}
 
@@ -550,12 +507,16 @@ impl Parser {
 		&mut self,
 		line_parser: &mut LineParser,
 	) -> ParserResult<bool> {
-		if let Context::MultiLineString(ctx) = self.context_stack.last_mut().unwrap() {
+		let last = self.context_stack.last_mut().unwrap();
+		let indent = last.get_indent();
+		if let ContextContent::MultiLineString(mls) = &mut last.content {
+			let lines = &mut mls.lines;
+
 			// if the indention isn't defined yet, analyze the line and define
 			// it.
 			if let Some(indention) = self.indention {
 				// consume the leading indention
-				if !line_parser.have_indentions(indention, ctx.indent) {
+				if !line_parser.have_indentions(indention, indent) {
 					// there weren't enough leading indents - the multi line
 					// string ended.
 					self.pop_stack();
@@ -588,7 +549,7 @@ impl Parser {
 			}
 
 			// the rest of the line belongs to the screen
-			ctx.lines.push(line_parser.consume_rest().to_string());
+			lines.push(line_parser.consume_rest().to_string());
 			Ok(true)
 		} else {
 			Ok(false)
@@ -677,103 +638,167 @@ pub fn parse_string(s: &str) -> ParserResult<Value> {
 /// Encodes a [value::Value] into a string. This implementation will prefer to
 /// expand arrays and strings to multiple lines to improve readability.
 pub fn encode_string_expanded(v: &Value, indention: Indention) -> String {
-	fn encode_indent(indent: usize, indent_str: &str, buf: &mut String) {
-		for _ in 0..indent {
-			buf.push_str(indent_str);
-		}
-	}
-
 	fn should_be_multi_line(s: &str) -> bool {
-		s.contains("'") | s.contains("'") | s.contains("\n")
+		s.contains("'") | s.contains("\"") | s.contains("\n")
 	}
 
-	fn encode_multi_line_string(indent: usize, indent_str: &str, s: &String, buf: &mut String) {
-		for line in s.lines() {
-			encode_indent(indent, indent_str, buf);
-			buf.push_str(line);
-			buf.push_str("\n");
+	#[derive(Debug)]
+	enum EncodedValue {
+		Inlined(String),
+		MultiLineString(Vec<String>),
+		Object(HashMap<String, EncodedValue>),
+		InlinedArray(Vec<EncodedValue>),
+		MultiLineArray(Vec<EncodedValue>),
+	}
+
+	impl EncodedValue {
+		fn mls_from_str(s: &str) -> Self {
+			Self::MultiLineString(s.lines().map(ToString::to_string).collect())
+		}
+
+		fn inlined(s: impl ToString) -> Self {
+			Self::Inlined(s.to_string())
+		}
+
+		fn object_from_iter<K: ToString, V: Into<EncodedValue>>(
+			it: impl IntoIterator<Item = (K, V)>,
+		) -> Self {
+			Self::Object(HashMap::from_iter(
+				it.into_iter().map(|(k, v)| (k.to_string(), v.into())),
+			))
+		}
+
+		fn multi_line_array_from_iter<V: Into<EncodedValue>>(
+			it: impl IntoIterator<Item = V>,
+		) -> Self {
+			Self::MultiLineArray(it.into_iter().map(|v| v.into()).collect())
+		}
+
+		fn inline_array_from_iter<V: Into<EncodedValue>>(it: impl IntoIterator<Item = V>) -> Self {
+			Self::InlinedArray(it.into_iter().map(|v| v.into()).collect())
+		}
+
+		fn is_multi_line_array(&self) -> bool {
+			matches!(self, Self::MultiLineArray(..))
 		}
 	}
 
-	fn encode_primitive(
-		indent: usize,
-		indent_str: &str,
-		primitive: &PrimitiveValue,
-		buf: &mut String,
-	) {
-		match primitive {
-			PrimitiveValue::Number(p) => buf.push_str(&p.to_string()),
-			PrimitiveValue::Boolean(p) => buf.push_str(&p.to_string()),
-			PrimitiveValue::String(s) => {
-				if should_be_multi_line(s) {
-					buf.push_str("|\n");
-					encode_multi_line_string(indent, indent_str, s, buf);
-				} else {
-					buf.push_str("'");
-					buf.push_str(s);
-					buf.push_str("'");
+	impl From<&PrimitiveValue> for EncodedValue {
+		fn from(p: &PrimitiveValue) -> Self {
+			match p {
+				PrimitiveValue::Number(p) => Self::Inlined(p.to_string()),
+				PrimitiveValue::Boolean(p) => Self::Inlined(p.to_string()),
+				PrimitiveValue::String(s) => {
+					if should_be_multi_line(s) {
+						Self::mls_from_str(s)
+					} else {
+						Self::Inlined(format!("'{s}'"))
+					}
+				}
+				PrimitiveValue::Null => Self::inlined("null"),
+			}
+		}
+	}
+
+	impl From<&Value> for EncodedValue {
+		fn from(v: &Value) -> Self {
+			match v {
+				Value::Primitive(p) => Self::from(p),
+				Value::Array(arr) => {
+					// encode all values
+					let encoded = arr
+						.into_iter()
+						.map(|value| EncodedValue::from(value))
+						.collect::<Vec<_>>();
+
+					// check if at least one of the variables is not inlined
+					let has_non_inlined = encoded
+						.iter()
+						.find(|v| !matches!(v, EncodedValue::Inlined(..)))
+						.is_some();
+
+					// if there is a non inlined variable, then create a multi
+					// line array, otherwise create an inlined array
+					if has_non_inlined {
+						Self::multi_line_array_from_iter(encoded)
+					} else {
+						Self::inline_array_from_iter(encoded)
+					}
+				}
+				Value::Object(obj) => {
+					// encode all values
+					let encoded = obj
+						.into_iter()
+						.map(|(key, value)| (key, EncodedValue::from(value)));
+
+					// construct object
+					Self::object_from_iter(encoded)
 				}
 			}
-			PrimitiveValue::Null => buf.push_str("null"),
 		}
 	}
 
-	fn encode_value(indent: usize, indent_str: &str, v: &Value, buf: &mut String) {
+	fn encode_indent(lines: &mut Vec<String>, indent_str: &str, indent: i32) {
+		for _ in 0..indent {
+			lines.last_mut().unwrap().push_str(indent_str);
+		}
+	}
+
+	fn encoded_to_lines(indent_str: &str, lines: &mut Vec<String>, indent: i32, v: EncodedValue) {
 		match v {
-			Value::Primitive(primitive) => {
-				encode_primitive(indent, indent_str, primitive, buf);
+			EncodedValue::Inlined(s) => {
+				lines.last_mut().unwrap().push_str(&s);
 			}
-			Value::Object(objects) => {
-				if indent > 0 {
-					buf.push_str("\n");
-				}
-				for (key, v) in objects {
-					encode_indent(indent, indent_str, buf);
-					buf.push_str(key);
-					buf.push_str(": ");
-					encode_value(indent + 1, indent_str, v, buf);
-					buf.push_str("\n");
+			EncodedValue::MultiLineString(s) => {
+				lines.last_mut().unwrap().push_str("|");
+				for line in s {
+					lines.push(String::new());
+					encode_indent(lines, indent_str, indent);
+					lines.last_mut().unwrap().push_str(&line);
 				}
 			}
-			Value::Array(values) => {
-				// decide whether or not the array should be multi line
-				let mut multi_line = false;
-				for v in values {
-					match v {
-						Value::Primitive(primitive) => match primitive {
-							PrimitiveValue::String(s) => {
-								if should_be_multi_line(s) {
-									multi_line = true;
-									break;
-								}
-							}
-							_ => {}
-						},
-						_ => {
-							multi_line = true;
-							break;
-						}
-					}
-				}
+			EncodedValue::Object(v) => {
+				for (key, value) in v {
+					lines.push(String::new());
 
-				if multi_line {
-					buf.push_str("--");
-					for v in values {
-						buf.push_str("\n");
-						encode_indent(indent, indent_str, buf);
-						encode_value(indent + 1, indent_str, v, buf);
+					encode_indent(lines, indent_str, indent);
+
+					// for readability, if the next value is a multi line array,
+					// don't add a space after the colon
+					if value.is_multi_line_array() {
+						lines.last_mut().unwrap().push_str(&format!("{key}:"));
+					} else {
+						lines.last_mut().unwrap().push_str(&format!("{key}: "));
 					}
-				} else {
-					buf.push_str("[");
-					let mut values = values.iter();
-					if let Some(v) = values.next() {
-						encode_value(indent, indent_str, v, buf);
-						for v in values {
-							buf.push_str(" ");
-							encode_value(indent, indent_str, v, buf);
-						}
+
+					// encode the value
+					encoded_to_lines(indent_str, lines, indent + 1, value);
+				}
+			}
+			EncodedValue::InlinedArray(arr) => {
+				lines.last_mut().unwrap().push_str("[");
+				if arr.len() > 0 {
+					let mut it = arr.into_iter();
+					encoded_to_lines(indent_str, lines, indent, it.next().unwrap());
+					for v in it {
+						lines.last_mut().unwrap().push_str(" ");
+						encoded_to_lines(indent_str, lines, indent, v);
 					}
-					buf.push_str("]");
+				}
+				lines.last_mut().unwrap().push_str("]");
+			}
+			EncodedValue::MultiLineArray(arr) => {
+				lines.last_mut().unwrap().push_str("--");
+
+				for v in arr {
+					lines.push(String::new());
+					encode_indent(lines, indent_str, indent);
+
+					if !matches!(v, EncodedValue::MultiLineArray(..)) {
+						lines.last_mut().unwrap().push_str("- ");
+					}
+
+					encoded_to_lines(indent_str, lines, indent + 1, v);
 				}
 			}
 		}
@@ -785,13 +810,13 @@ pub fn encode_string_expanded(v: &Value, indention: Indention) -> String {
 		Indention::Spaces(spaces) => (" ").repeat(spaces).to_string(),
 	};
 
-	// recurse and generate output
-	let mut buf = String::new();
-	encode_value(0, &indention, v, &mut buf);
+	// encode value
+	let encoded = EncodedValue::from(v);
 
-	// remove empty lines
-	buf.lines()
-		.filter(|l| l.trim_start().len() > 0)
-		.collect::<Vec<_>>()
-		.join("\n")
+	// convert to lines
+	let mut lines: Vec<String> = vec![String::new()];
+	encoded_to_lines(&indention, &mut lines, 0, encoded);
+
+	// join lines
+	lines.join("\n")
 }

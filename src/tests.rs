@@ -60,6 +60,11 @@ d:
 			<line 1>
 				<line 2>
 			<line 3>
+arr:--
+	- a: |
+		<line 1>
+			<line 2>
+		<line 3>
 ";
 
 static ARRAY_OF_OBJECTS: &'static str = "
@@ -75,6 +80,10 @@ objects:--
 		'key 2-2': 'value 2-2'
 		'nested object':
 			'key 2-3': 'value 2-3'
+	
+	-
+		'object 3-1':
+		'object 3-2':
 
 	- a: 'a'
 	- b: 'b'
@@ -145,7 +154,12 @@ fn test_sources() {
 				e: {
 					f: "<line 1>\n\t<line 2>\n<line 3>"
 				}
-			}
+			},
+			arr: [
+				{
+					a: "<line 1>\n\t<line 2>\n<line 3>"
+				}
+			]
 		},
 	);
 
@@ -170,6 +184,10 @@ fn test_sources() {
 							"key 2-3": "value 2-3"
 						}
 					}
+				},
+				{
+					"object 3-1": {},
+					"object 3-2": {},
 				},
 				{
 					a: "a"
@@ -319,7 +337,9 @@ b:
 c: null
 d
 arr:--
-	- f:
+	- a:
+	- b:
+	- c: null
 ";
 
 #[test]
@@ -333,8 +353,14 @@ fn empty_object_vs_null() {
 			d: Value::null(),
 			arr: [
 				{
-					f: {}
-				}
+					a: {}
+				},
+				{
+					b: {}
+				},
+				{
+					c: Value::null()
+				},
 			]
 		},
 	);

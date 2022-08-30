@@ -8,7 +8,7 @@ fn main() {
 			1,
 			[true, false],
 			[[true, false]],
-			[[true, false]],
+			[[[true, false]]],
 		],
 		a: {
 			b: {
