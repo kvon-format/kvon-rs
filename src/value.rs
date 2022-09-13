@@ -41,7 +41,7 @@ impl PrimitiveValue {
 		}
 	}
 
-	pub fn get_string(&self) -> GetterResult<&String> {
+	pub fn get_string(&self) -> GetterResult<&str> {
 		match self {
 			Self::String(s) => Ok(s),
 			_ => Err(()),

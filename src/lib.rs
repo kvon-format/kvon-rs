@@ -70,7 +70,10 @@ mod line_parser;
 mod tests;
 pub mod value;
 
-use std::collections::HashMap;
+use std::{
+	collections::HashMap,
+	io::{BufRead, BufReader, Read},
+};
 
 use error::{ParserError, ParserErrorKind};
 use indention::Indention;
@@ -635,6 +638,34 @@ pub fn parse_string(s: &str) -> ParserResult<Value> {
 	))
 }
 
+/// Parses a [std::io::Read] into a [value::Value].
+pub fn parse_reader<R: Read>(r: R) -> ParserResult<Value> {
+	let mut reader = BufReader::new(r);
+
+	let mut parser = Parser::new();
+	let mut line = String::new();
+	loop {
+		let amount = reader.read_line(&mut line).unwrap();
+		if amount == 0 {
+			break;
+		}
+		parser.next_line(&line)?;
+		line.clear();
+	}
+
+	parser.collapse_context();
+
+	Ok(Value::Object(
+		parser
+			.context_stack
+			.into_iter()
+			.next()
+			.unwrap()
+			.get_objects()
+			.unwrap(),
+	))
+}
+
 /// Encodes a [value::Value] into a string. This implementation will prefer to
 /// expand arrays and strings to multiple lines to improve readability.
 pub fn encode_string_expanded(v: &Value, indention: Indention) -> String {
@@ -678,6 +709,10 @@ pub fn encode_string_expanded(v: &Value, indention: Indention) -> String {
 			Self::InlinedArray(it.into_iter().map(|v| v.into()).collect())
 		}
 
+		fn is_inlined(&self) -> bool {
+			matches!(self, Self::Inlined(..))
+		}
+
 		fn is_multi_line_array(&self) -> bool {
 			matches!(self, Self::MultiLineArray(..))
 		}
@@ -712,10 +747,7 @@ pub fn encode_string_expanded(v: &Value, indention: Indention) -> String {
 						.collect::<Vec<_>>();
 
 					// check if at least one of the variables is not inlined
-					let has_non_inlined = encoded
-						.iter()
-						.find(|v| !matches!(v, EncodedValue::Inlined(..)))
-						.is_some();
+					let has_non_inlined = encoded.iter().find(|v| !v.is_inlined()).is_some();
 
 					// if there is a non inlined variable, then create a multi
 					// line array, otherwise create an inlined array

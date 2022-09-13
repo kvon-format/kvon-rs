@@ -1,5 +1,7 @@
+use std::fs::File;
+
 use kvon_rs::{
-	parse_string,
+	parse_reader, parse_string,
 	value::{GetterResult, PrimitiveValue, Value},
 };
 
@@ -10,8 +12,13 @@ c: [1 2 [3 4]]
 ";
 
 fn main() -> GetterResult<()> {
-	let object = parse_string(SOURCE).unwrap();
+	test(parse_string(SOURCE).unwrap())?;
+	let mut file = File::open("./examples/example.kvon").unwrap();
+	test(parse_reader(&mut file).unwrap())?;
+	Ok(())
+}
 
+fn test(object: Value) -> GetterResult<()> {
 	// access nested values with if-let
 	if let Value::Object(obj) = &object {
 		let c = &obj["c"];
